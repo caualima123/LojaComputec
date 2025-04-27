@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Estoque - Loja do Papai 📦</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-color: #f4f6f8;
+      --text-color: #333;
+      --primary-color: #4F46E5;
+      --card-color: #fff;
+    }
+    [data-theme="dark"] {
+      --bg-color: #121212;
+      --text-color: #f4f4f4;
+      --primary-color: #6366f1;
+      --card-color: #1e1e1e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      font-size: 1.8rem;
+      font-weight: bold;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      align-items: center;
+    }
+    input {
+      padding: 0.8rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      flex: 1;
+    }
+    .btn {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.3s;
+    }
+    .btn:hover {
+      background-color: #4338CA;
+    }
+    .table-container {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-color);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background-color: #eef2ff;
+    }
+    tr:hover {
+      background-color: #f0f0f0;
+    }
+    [data-theme="dark"] tr:hover {
+      background-color: #2c2c2c;
+    }
+    #total {
+      margin-top: 1rem;
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+    .actions button {
+      margin-right: 0.3rem;
+    }
+    .theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      background: var(--primary-color);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+      cursor: pointer;
+      font-size: 1.5rem;
+      z-index: 1000;
+    }
+    @media(max-width: 600px) {
+      .controls { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>📦 Estoque - Loja do Papai</header>
+<button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+
+<main>
+  <div class="controls">
+    <input type="text" id="name" placeholder="Nome do Produto">
+    <input type="number" id="quantity" placeholder="Quantidade">
+    <input type="text" id="price" placeholder="Preço (R$)">
+    <button class="btn" onclick="addProduct()">➕ Adicionar</button>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="🔍 Buscar Produto..." onkeyup="searchProducts()">
+  </div>
+
+  <div class="table-container">
+    <table id="productTable">
+      <thead>
+        <tr>
+          <th>Produto</th>
+          <th>Quantidade</th>
+          <th>Preço</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Produtos aparecem aqui -->
+      </tbody>
+    </table>
+  </div>
+
+  <div id="total">Total de Itens: 0</div>
+
+  <div style="margin-top: 2rem;">
+    <h2>📊 Gráfico de Estoque</h2>
+    <canvas id="stockChart" style="max-width: 100%; background: var(--card-color); padding: 1rem; border-radius: 8px;"></canvas>
+  </div>
+
+  <div style="margin-top: 2rem;">
+    <h2>🕒 Histórico de Movimentações</h2>
+    <ul id="history" style="max-height: 300px; overflow-y: auto; background: var(--card-color); padding: 1rem; border-radius: 8px; list-style: none;"></ul>
+  </div>
+
+  <div style="margin-top: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+    <button class="btn" onclick="exportBackup()">💾 Exportar Backup</button>
+    <input type="file" id="importFile" style="display: none;" onchange="importBackup(event)">
+    <button class="btn" onclick="document.getElementById('importFile').click()">📂 Importar Backup</button>
+  </div>
+</main>
+
+<script>
+  const tableBody = document.querySelector('#productTable tbody');
+  const totalItems = document.getElementById('total');
+  let products = JSON.parse(localStorage.getItem('products')) || [];
+  let history = JSON.parse(localStorage.getItem('history')) || [];
+  let stockChart;
+
+  function renderProducts() {
+    tableBody.innerHTML = '';
+    let total = 0;
+
+    products.forEach((product, index) => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${product.name}</td>
+        <td>${product.quantity}</td>
+        <td>R$ ${parseFloat(product.price).toFixed(2)}</td>
+        <td class="actions">
+          <button class="btn" onclick="retirarProduto(${index})">➖ Retirar</button>
+          <button class="btn" onclick="editProduct(${index})">✏️ Editar</button>
+          <button class="btn" onclick="deleteProduct(${index})">🗑️ Excluir</button>
+        </td>
+      `;
+      tableBody.appendChild(row);
+      total += parseInt(product.quantity);
+    });
+
+    totalItems.innerText = `Total de Itens: ${total}`;
+    localStorage.setItem('products', JSON.stringify(products));
+    updateChart();
+    updateHistory();
+  }
+
+  function addProduct() {
+    const name = document.getElementById('name').value.trim();
+    const quantity = document.getElementById('quantity').value.trim();
+    const price = document.getElementById('price').value.trim();
+
+    if (!name || !quantity || !price) {
+      alert('Por favor, preencha todos os campos.');
+      return;
+    }
+
+    products.push({ name, quantity, price });
+    addHistory(`Adicionado: ${name} (Qtd: ${quantity}, Preço: R$${price})`);
+    clearForm();
+    renderProducts();
+  }
+
+  function clearForm() {
+    document.getElementById('name').value = '';
+    document.getElementById('quantity').value = '';
+    document.getElementById('price').value = '';
+  }
+
+  function deleteProduct(index) {
+    if (confirm('Tem certeza que deseja excluir este produto?')) {
+      addHistory(`Excluído: ${products[index].name}`);
+      products.splice(index, 1);
+      renderProducts();
+    }
+  }
+
+  function editProduct(index) {
+    const product = products[index];
+    const newName = prompt('Novo nome do produto:', product.name);
+    const newQuantity = prompt('Nova quantidade:', product.quantity);
+    const newPrice = prompt('Novo preço:', product.price);
+
+    if (newName && newQuantity && newPrice) {
+      products[index] = { name: newName, quantity: newQuantity, price: newPrice };
+      addHistory(`Editado: ${newName} (Qtd: ${newQuantity}, Preço: R$${newPrice})`);
+      renderProducts();
+    }
+  }
+
+  function retirarProduto(index) {
+    const quantidadeARetirar = prompt('Quantas unidades retirar?', 1);
+    if (quantidadeARetirar !== null) {
+      let retirar = parseInt(quantidadeARetirar);
+      if (!isNaN(retirar) && retirar > 0) {
+        products[index].quantity -= retirar;
+        addHistory(`Retirado: ${retirar} unidades de ${products[index].name}`);
+        if (products[index].quantity <= 0) {
+          if (confirm('Quantidade zerada. Deseja remover o produto?')) {
+            addHistory(`Produto removido após zerar: ${products[index].name}`);
+            products.splice(index, 1);
+          }
+        }
+        renderProducts();
+      } else {
+        alert('Digite uma quantidade válida.');
+      }
+    }
+  }
+
+  function searchProducts() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const rows = tableBody.querySelectorAll('tr');
+
+    rows.forEach(row => {
+      const name = row.children[0].innerText.toLowerCase();
+      row.style.display = name.includes(search) ? '' : 'none';
+    });
+  }
+
+  function toggleTheme() {
+    const currentTheme = document.body.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+  }
+
+  function updateChart() {
+    const names = products.map(p => p.name);
+    const quantities = products.map(p => parseInt(p.quantity));
+
+    if (stockChart) stockChart.destroy();
+
+    const ctx = document.getElementById('stockChart').getContext('2d');
+    stockChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: names,
+        datasets: [{
+          label: 'Quantidade',
+          data: quantities,
+          backgroundColor: '#4F46E5'
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  function addHistory(action) {
+    const timestamp = new Date().toLocaleString();
+    history.unshift(`[${timestamp}] ${action}`);
+    if (history.length > 100) history.pop();
+    updateHistory();
+  }
+
+  function updateHistory() {
+    const historyList = document.getElementById('history');
+    historyList.innerHTML = '';
+    history.forEach(item => {
+      const li = document.createElement('li');
+      li.style.marginBottom = '0.5rem';
+      li.textContent = item;
+      historyList.appendChild(li);
+    });
+    localStorage.setItem('history', JSON.stringify(history));
+  }
+
+  function exportBackup() {
+    const data = { products, history };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'estoque_backup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importBackup(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.products && Array.isArray(data.products)) {
+          products = data.products;
+          history = data.history || [];
+          renderProducts();
+          updateChart();
+          updateHistory();
+          alert('Backup importado com sucesso!');
+        } else {
+          alert('Arquivo inválido!');
+        }
+      } catch {
+        alert('Erro ao importar o arquivo.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Carregar tema salvo
+  document.body.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
+  renderProducts();
+</script>
+
+</body>
+</html>
